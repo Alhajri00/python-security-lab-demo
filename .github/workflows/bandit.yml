@@ -23,16 +23,23 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Bandit
+      - name: Install Bandit (with SARIF support)
         run: |
           python -m pip install --upgrade pip
-          pip install bandit
+          # Either of these lines works — using both for maximum compatibility:
+          pip install "bandit[sarif]" || pip install bandit bandit-sarif-formatter
+          bandit --version
 
-      - name: Run Bandit
+      - name: Verify SARIF formatter is available
+        run: |
+          bandit -h | grep -i sarif || (echo "SARIF formatter missing" && exit 1)
+
+      - name: Run Bandit and produce SARIF
         run: |
           bandit -r . -f sarif -o bandit.sarif || true
+          ls -l bandit.sarif
 
-      - name: Upload SARIF report to GitHub Code Scanning
+      - name: Upload SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: bandit.sarif
