@@ -23,23 +23,34 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Bandit (with SARIF support)
+      - name: Install Bandit with SARIF support
         run: |
           python -m pip install --upgrade pip
-          # Either of these lines works — using both for maximum compatibility:
-          pip install "bandit[sarif]" || pip install bandit bandit-sarif-formatter
+          pip install "bandit>=1.7.6" "bandit-sarif-formatter>=0.9.0"
           bandit --version
 
-      - name: Verify SARIF formatter is available
+      # 1) Show human-readable results in the log so we know Bandit actually finds issues
+      - name: Run Bandit (text output)
         run: |
-          bandit -h | grep -i sarif || (echo "SARIF formatter missing" && exit 1)
+          echo "=== Bandit text run (should show findings) ==="
+          bandit -r . -s LOW,MEDIUM,HIGH -i LOW,MEDIUM,HIGH || true
 
-      - name: Run Bandit and produce SARIF
+      # 2) Produce SARIF for Code Scanning
+      - name: Run Bandit (SARIF)
         run: |
-          bandit -r . -f sarif -o bandit.sarif || true
-          ls -l bandit.sarif
+          bandit -r . -s LOW,MEDIUM,HIGH -i LOW,MEDIUM,HIGH -f sarif -o bandit.sarif || true
+          test -f bandit.sarif && echo "SARIF file created."
+          python - <<'PY'
+import json,sys
+data=json.load(open("bandit.sarif"))
+results=len(data["runs"][0].get("results",[]))
+print("SARIF results:", results)
+sys.exit(0 if results>0 else 1)
+PY
+        # If the SARIF has 0 results, the step fails so we know to look at the text run above
 
       - name: Upload SARIF to Code Scanning
+        if: always() # still upload when previous step failed so we can inspect
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: bandit.sarif
